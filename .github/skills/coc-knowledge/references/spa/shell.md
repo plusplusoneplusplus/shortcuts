@@ -29,7 +29,7 @@ spa/client/react/
 ├── hooks/         # 30+ custom hooks
 ├── layout/        # Router, TopBar, BottomNav, MobileScopeBar, navDestinations, ThemeProvider
 ├── features/
-│   ├── canvas/    # CanvasPanel, ExtensionCanvasView, KustoView/KustoChart
+│   ├── canvas/    # CanvasPanel, CopilotExtensionCanvasView, KustoView/KustoChart
 │   ├── chat/      # ChatDetail, ChatListPane, ConversationArea, ImportCopilotChatDialog (flag `nativeCliSessions`: toolbar icon next to New chat)
 │   ├── dreams/    # Workspace Dreams review panel
 │   ├── memory/    # Memory V2 route

@@ -31,7 +31,6 @@ describe('built-in Kusto Run script lifetime', () => {
         const getProcess: ProcessStore['getProcess'] = async () => owner;
         const mutations = new CanvasMutationService({ store, notifier: { canvasUpdated: notify },
             processStore: { getProcess }, getKustoEnabled: () => true, getOwnerScriptRunner: () => runner,
-            completeFactory: () => async () => ({ ok: false, error: 'No model call permitted' }),
         });
         return { canvas, mutations, owner };
     }

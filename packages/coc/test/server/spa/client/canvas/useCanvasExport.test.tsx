@@ -40,7 +40,6 @@ describe('useCanvasExport', () => {
     let downloadBlob: ReturnType<typeof vi.fn>;
     let notify: ReturnType<typeof vi.fn>;
     let saveContent: ReturnType<typeof vi.fn>;
-    let getExtension: ReturnType<typeof vi.fn>;
     let client: any;
 
     beforeEach(() => {
@@ -49,8 +48,7 @@ describe('useCanvasExport', () => {
         downloadBlob = vi.fn();
         notify = vi.fn();
         saveContent = vi.fn().mockResolvedValue(undefined);
-        getExtension = vi.fn();
-        client = { canvases: { getExtension }, notes: { saveContent } };
+        client = { canvases: {}, notes: { saveContent } };
         mocks.exportCanvasAsHtml.mockReset().mockResolvedValue({ ok: true, warnings: [] });
     });
 
@@ -67,21 +65,6 @@ describe('useCanvasExport', () => {
             });
         });
     }
-
-    it('never exports the saved runtime descriptor of a Copilot extension', async () => {
-        const { result } = mount(makeCanvas({ type: 'copilot-extension', content: '{"input":"saved"}' }));
-        await act(async () => {
-            await result.current.copyContent();
-            result.current.download();
-            await result.current.exportHtml();
-            await result.current.saveToNotes();
-        });
-        expect(copyText).not.toHaveBeenCalled();
-        expect(downloadBlob).not.toHaveBeenCalled();
-        expect(saveContent).not.toHaveBeenCalled();
-        expect(getExtension).not.toHaveBeenCalled();
-        expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
-    });
 
     it('copies the canvas content and clears the status after the flash window', async () => {
         const { result } = mount(makeCanvas());
@@ -180,29 +163,6 @@ describe('useCanvasExport', () => {
 
         expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
         expect(result.current.exportStatus).toBeNull();
-    });
-
-    it('fetches the extension UI doc and passes { uiHtml, revision } — never capabilitiesJs', async () => {
-        getExtension.mockResolvedValue({ uiHtml: '<div>ui</div>', capabilitiesJs: 'SECRET' });
-        const { result } = mount(makeCanvas({ type: 'extension', content: '{"n":1}' }));
-
-        await act(async () => { await result.current.exportHtml(); });
-
-        expect(getExtension).toHaveBeenCalledWith('ws-1', 'doc-abc123');
-        const [source] = mocks.exportCanvasAsHtml.mock.calls[0];
-        expect(source.extension).toEqual({ uiHtml: '<div>ui</div>', revision: 3 });
-        expect(JSON.stringify(source)).not.toContain('SECRET');
-    });
-
-    it('aborts before any export when the extension UI doc cannot be fetched', async () => {
-        getExtension.mockRejectedValue(new Error('404'));
-        const { result } = mount(makeCanvas({ type: 'extension' }));
-
-        await act(async () => { await result.current.exportHtml(); });
-
-        expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
-        expect(notify).toHaveBeenCalledWith('Could not load the extension to export as HTML', 'error');
-        expect(result.current.exportStatus).toBe('Export failed');
     });
 
     it('surfaces the orchestrator error message on a failed export', async () => {

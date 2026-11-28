@@ -4,8 +4,7 @@
  * Recharts is deliberately NOT part of the SPA bundle. The dashboard client is
  * built by esbuild as a single `format: 'iife'` + `outfile` bundle, which cannot
  * code-split — a `React.lazy` / dynamic `import()` would inline recharts rather
- * than defer it. So instead we reuse the bundle that is already built for
- * extension canvases and served at `/canvas-vendor/recharts.js`, injecting it
+ * than defer it. The vendor bundle is served at `/canvas-vendor/recharts.js`; the loader injects it
  * with a classic `<script src>` the first time a chart actually needs it.
  *
  * That bundle is built with `react` mapped to `window.React`, so the loader has
@@ -15,19 +14,17 @@
  * The load is also probed for `window.Recharts` after `onload`: a missing
  * `/canvas-vendor/*.js` does not 404 — the dashboard serves the SPA's
  * `index.html` at the site root, so the request succeeds with a 200 and the
- * browser happily "loads" HTML that defines nothing. See the same trap
- * documented in `extension-runtime.ts`.
+ * browser happily "loads" HTML that defines nothing.
  */
 
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import { CANVAS_VENDOR_PATH } from '../../../../../canvas/canvas-libraries';
 
 /** Whatever `window.Recharts` exposes — the vendored namespace object. */
 export type RechartsNamespace = Record<string, any>;
 
 /** URL the vendored recharts bundle is served from, at the site root. */
-export const RECHARTS_VENDOR_URL = `${CANVAS_VENDOR_PATH}/recharts.js`;
+export const RECHARTS_VENDOR_URL = '/canvas-vendor/recharts.js';
 
 declare global {
     interface Window {

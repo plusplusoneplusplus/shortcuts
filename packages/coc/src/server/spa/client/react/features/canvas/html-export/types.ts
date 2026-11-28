@@ -14,7 +14,7 @@
  */
 
 /** Canvas types that participate in HTML export (mirrors CanvasType). */
-export type CanvasHtmlExportType = 'markdown' | 'code' | 'excalidraw' | 'extension';
+export type CanvasHtmlExportType = 'markdown' | 'code' | 'excalidraw';
 
 /**
  * Input to the pure serializer (Layer A). No DOM, no I/O — every asset has

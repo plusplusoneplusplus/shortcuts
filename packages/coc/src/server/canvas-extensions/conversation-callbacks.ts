@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AIProcess, ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CLIConfig } from '../../config';
 import { createCLIAIInvoker } from '../../ai-invoker';
-import { CANVAS_COMPLETE_TIMEOUT_MS, createCanvasCompleteFn } from '../canvas/canvas-capability-completion';
+import { CANVAS_COMPLETE_TIMEOUT_MS, createExtensionCompleteFn } from './completion';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { resolveChatTurnModel } from '../executors/chat-turn-policy-resolver';
 import { resolveActiveProvider } from '../processes/active-provider-session';
@@ -54,8 +54,8 @@ export function createCanvasExtensionCallbacks(options: ConversationCallbackOpti
         async ephemeralQuery(owner, extensionKey, question) {
             const process = await readOwner(owner);
             const provider = resolveActiveProvider(process);
-            const complete = createCanvasCompleteFn(options.dataDir, {
-                ...owner, canvasId: extensionKey, capability: 'session.ui.ephemeralQuery',
+            const complete = createExtensionCompleteFn(options.dataDir, {
+                ...owner, extensionKey, operation: 'session.ui.ephemeralQuery',
             }, {
                 log: options.log,
                 defaultModel: () => resolveChatTurnModel({

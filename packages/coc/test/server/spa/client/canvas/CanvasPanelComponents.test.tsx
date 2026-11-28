@@ -12,9 +12,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
     MonacoFileEditor: ({ value }: { value: string }) => <textarea data-testid="mock-monaco" defaultValue={value} />,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
-    ExtensionCanvasView: () => <div data-testid="mock-extension-view" />,
-}));
 
 vi.mock('../../../../../src/server/spa/client/react/features/canvas/KustoView', () => ({
     KustoView: ({ readOnly, canvas }: { readOnly: boolean; canvas: { revision: number } }) => (
@@ -268,17 +265,6 @@ describe('CanvasBodyRenderer', () => {
         expect(screen.queryByTestId('mock-monaco')).toBeNull();
         expect(screen.queryByTestId('canvas-panel-editor')).toBeNull();
         expect(screen.getByTestId('canvas-panel-preview').textContent).toContain('x = 1');
-    });
-
-    it('routes an extension canvas to its iframe view in preview and to the raw JSON in edit', () => {
-        const canvas = makeCanvas({ type: 'extension', content: '{"n":1}' });
-        const { unmount } = renderBody({ canvas });
-        expect(screen.getByTestId('mock-extension-view')).toBeTruthy();
-        unmount();
-
-        renderBody({ canvas, mode: 'edit' });
-        expect(screen.queryByTestId('mock-extension-view')).toBeNull();
-        expect((screen.getByTestId('canvas-panel-editor') as HTMLTextAreaElement).value).toBe('{"n":1}');
     });
 
     it('reports the edited text through onDraftChange for both editors', () => {

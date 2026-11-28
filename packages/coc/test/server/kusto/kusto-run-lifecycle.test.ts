@@ -23,7 +23,7 @@ describe('Kusto Run production lifecycle', () => {
         work.length = 0;
         root = await mkdtemp(join(tmpdir(), 'kusto-run-lifecycle-'));
         const configPath = join(root, 'config.yaml');
-        await writeFile(configPath, 'kusto:\n  enabled: true\nfeatures:\n  canvasHostApis: false\n  canvasToolScripts: false\n  toolScripting: false\n');
+        await writeFile(configPath, 'kusto:\n  enabled: true\nfeatures:\n  toolScripting: false\n');
         store = new SqliteProcessStore({ dbPath: join(root, 'processes.db') });
         canvases = new CanvasStore(root);
         service = new CopilotSDKService();

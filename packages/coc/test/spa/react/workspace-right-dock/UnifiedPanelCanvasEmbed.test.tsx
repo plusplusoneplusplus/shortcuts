@@ -23,9 +23,6 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
 }));
 // The other canvas types bring their own heavy stacks; the document preview is
 // enough to prove the shared open action sits above whichever body renders.
-vi.mock('../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
-    ExtensionCanvasView: () => <div data-testid="mock-extension-canvas" />,
-}));
 vi.mock('../../../../src/server/spa/client/react/features/canvas/KustoView', () => ({
     KustoView: () => <div data-testid="mock-kusto-view" />,
     parseKustoContent: () => ({ rows: [], columns: [] }),

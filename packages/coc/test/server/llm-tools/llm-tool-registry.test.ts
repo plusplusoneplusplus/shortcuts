@@ -271,7 +271,9 @@ describe('getEffectiveLlmToolRegistry', () => {
         const names = getEffectiveLlmToolRegistry({ canvasEnabled: true }).map(t => t.name);
         expect(names).toContain('write_canvas');
         expect(names).toContain('read_canvas');
-        expect(names).toContain('extension_canvas');
+        expect(names).not.toContain('extension_canvas');
+        const extensionNames = getEffectiveLlmToolRegistry({ canvasEnabled: false, canvasExtensionsEnabled: true }).map(t => t.name);
+        expect(extensionNames).toContain('extension_canvas');
     });
 
     it('filters out kusto_query when kustoEnabled is false', async () => {

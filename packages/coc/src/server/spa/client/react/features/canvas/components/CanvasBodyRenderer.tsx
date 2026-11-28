@@ -6,10 +6,9 @@
  *  2. Installed Copilot extensions — unified desktop guest or a plain fallback
  *  3. Excalidraw scenes and Kusto canvases — host-rendered views, including
  *     history revisions, so their content never reaches the markdown pipeline
- *  4. extension canvases in preview — the sandboxed-iframe UI
- *  5. Edit mode — Monaco for code canvases, a plain textarea otherwise
- *  6. SVG code canvases — the isolated SVG render surface
- *  7. everything else — the chat markdown renderer
+ *  4. Edit mode — Monaco for code canvases, a plain textarea otherwise
+ *  5. SVG code canvases — the isolated SVG render surface
+ *  6. everything else — the chat markdown renderer
  *
  * History views are read-only: no edit branch is reachable while
  * `viewingVersion` is set.
@@ -25,7 +24,6 @@ import { chatMarkdownToHtml } from '../../chat/conversation/markdownHtml';
 import { copySelectionWithInlineImages } from '../../../utils/format';
 import { MonacoFileEditor } from '../../repo-detail/explorer/MonacoFileEditor';
 import { ExcalidrawSceneView, parseSceneContent } from '../../diagrams';
-import { ExtensionCanvasView } from '../ExtensionCanvasView';
 import { KustoView } from '../KustoView';
 import { SvgCanvasView } from '../SvgCanvasView';
 import { CopilotExtensionCanvasView, parseExtensionRuntimeReload } from '../CopilotExtensionCanvasView';
@@ -33,7 +31,6 @@ import { monacoLanguageFor, previewMarkdownFor, type CanvasKind, type ViewMode }
 
 export interface CanvasBodyRendererProps {
     allowDesktopGuest?: boolean;
-    onRegisterExtensionReload?: (reload: (() => void) | null) => void;
     routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
@@ -58,7 +55,7 @@ export interface CanvasBodyRendererProps {
 export function CanvasBodyRenderer({
     workspaceId, routingRef, canvasId, loading, loadError, canvas, kind, viewingVersion, viewingRevision,
     displayedContent, mode, draft, onDraftChange, onCanvasSaved, onSelectionChange, onImageMenu, notify,
-    allowDesktopGuest = false, onRegisterExtensionReload,
+    allowDesktopGuest = false,
 }: CanvasBodyRendererProps) {
     const excalidrawScene = useMemo(
         () => (kind.isExcalidraw ? parseSceneContent(displayedContent) : null),
@@ -71,7 +68,7 @@ export function CanvasBodyRenderer({
     // previews keep the editor-style forge renderer (useMarkdownPreview).
     // SVG fences only activate for markdown canvases; code canvases already
     // route to SvgCanvasView, and ordinary code canvases stay as source.
-    const svgFenceEnabled = !kind.isCode && !kind.isExcalidraw && !kind.isExtension;
+    const svgFenceEnabled = !kind.isCode && !kind.isExcalidraw;
     const previewHtml = useMemo(
         () => chatMarkdownToHtml(previewMarkdown, workspaceId, { svgFenceEnabled, canvasEmbedEnabled: canvas?.type === 'markdown' }),
         [previewMarkdown, workspaceId, svgFenceEnabled, canvas?.type],
@@ -168,18 +165,6 @@ export function CanvasBodyRenderer({
                     : canvas}
                 onCanvasSaved={viewingVersion ? undefined : onCanvasSaved}
                 readOnly={!!viewingVersion}
-            />
-        );
-    }
-    if (!viewingVersion && mode === 'preview' && kind.isExtension && canvas) {
-        return (
-            <ExtensionCanvasView
-                key={JSON.stringify({ workspaceId, routingRef, canvasId })}
-                routingRef={routingRef}
-                onRegisterReload={onRegisterExtensionReload}
-                workspaceId={workspaceId}
-                canvas={canvas}
-                onCanvasSaved={onCanvasSaved}
             />
         );
     }

@@ -1,3 +1,4 @@
+import { CanvasStore } from '../../src/server/canvas/canvas-store';
 /**
  * Every registered snapshot domain must pass the same lifecycle contract:
  * collect (export), restoreReplace + restoreMerge (import), planWipe (dry-run),
@@ -474,9 +475,20 @@ describe('snapshot domain behavior', () => {
             .toBe('machine-local screenshot');
     });
 
+    it('reports dropped runtime snapshot records without restoring executable identities', async () => {
+        const payload = { ...emptyPayload(), canvases: [{ type: 'extension' }, { type: 'copilot-extension' }] };
+        const result = createImportResult();
+        await restoreStorageSnapshotMerge(payload, { dataDir, store }, result);
+        expect(result.droppedCanvasRecords).toBe(2);
+        expect(new CanvasStore(dataDir).listCanvases('repo-1')).toEqual([]);
+    });
+
     it('canvas session workspaces stay machine-local and are removed by wipe', async () => {
         const directory = path.join(dataDir, 'repos', 'repo-1', 'canvas-ext', 'session-state');
         const file = path.join(directory, 'p-7031', 'state.txt');
+        const generated = path.join(dataDir, 'repos', 'repo-1', 'canvas-ext', 'generated');
+        fs.mkdirSync(path.join(generated, 'p-7031', 'package'), { recursive: true });
+        fs.writeFileSync(path.join(generated, 'p-7031', 'package', 'extension.mjs'), 'machine-local generated source');
         const ctx = { dataDir, store };
         expect(JSON.stringify(await collectStorageSnapshot(ctx))).not.toContain('machine-local canvas state');
         const result = createImportResult();
@@ -485,11 +497,12 @@ describe('snapshot domain behavior', () => {
         expect(result.errors).toEqual([]);
         expect(fs.readFileSync(file, 'utf8')).toBe('machine-local canvas state');
         const plan = await buildStorageWipePlan(ctx);
-        expect(plan.domainPlans.get('canvas-session-workspaces')).toEqual([directory]);
+        expect(plan.domainPlans.get('canvas-session-workspaces')).toEqual([directory, generated]);
         const wiped = { errors: [] as string[] };
         await executeStorageWipePlan(ctx, plan, wiped);
         expect(wiped.errors).toEqual([]);
         expect(fs.existsSync(directory)).toBe(false);
+        expect(fs.existsSync(generated)).toBe(false);
     });
 
     it('Teams channel bindings remain machine-local and are removed by wipe', async () => {

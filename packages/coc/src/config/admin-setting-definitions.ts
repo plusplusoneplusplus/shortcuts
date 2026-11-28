@@ -830,7 +830,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'canvasExtensions.enabled', default: false, runtime: 'live',
         ui: {
             group: 'review', order: 61.5, label: 'Copilot canvas extensions', badge: 'experimental',
-            hint: 'Enabling this lets the agent run code shipped in any opened repo and in ~/.copilot/extensions. Disabled by default.',
+            hint: 'Allows Node code from opened repos, ~/.copilot/extensions and conversation-generated packages. This grants filesystem and network access; a guest view is not a Node sandbox. Disabled by default.',
             testId: 'toggle-canvas-extensions-enabled',
         },
     }),
@@ -1545,22 +1545,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
 
-    bool({
-        key: 'features.canvasHostApis', default: false, runtime: 'live',
-        ui: {
-            group: 'review', order: 63, label: 'Canvas host APIs', badge: 'experimental',
-            hint: 'Lets an extension canvas declare async capabilities, which run in a terminable worker with a 30s budget and can call the model via host.complete (max 3 calls per run). Disabled by default.',
-            testId: 'toggle-canvas-host-apis-enabled',
-        },
-    }),
-    bool({
-        key: 'features.canvasToolScripts', default: true, runtime: 'live',
-        ui: {
-            group: 'review', order: 63.5, label: 'Canvas tool scripts', badge: 'experimental',
-            hint: 'Lets an async canvas capability call host.runScript to run a tool script as the chat that owns the canvas. Only read-only tools the canvas declares are available. Needs Canvas host APIs and Tool Scripting. Enabled by default.',
-            testId: 'toggle-canvas-tool-scripts-enabled',
-        },
-    }),
     bool({
         key: 'features.sensitiveInput', default: false, runtime: 'live',
         ui: {

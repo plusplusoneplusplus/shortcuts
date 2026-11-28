@@ -22,6 +22,8 @@ export interface AdminConfigFunctions {
 
 export interface AdminRouteOptions {
     store: ProcessStore;
+    /** Stop executable canvases before deleting machine-local source/state. */
+    beforeDataWipe?: () => Promise<void | (() => void)>;
     dataDir: string;
     /** Lazy getter for the WebSocket server (may not be created at route registration time). */
     getWsServer?: () => ProcessWebSocketServer | undefined;

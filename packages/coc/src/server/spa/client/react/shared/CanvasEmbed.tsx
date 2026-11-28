@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { Canvas } from '@plusplusoneplusplus/coc-client';
-import { ExtensionCanvasView } from '../features/canvas/ExtensionCanvasView';
 import { KustoView, parseKustoContent } from '../features/canvas/KustoView';
 import { useCocClient } from '../repos/cloneRouting';
 import { useChatRenderContext } from '../features/chat/conversation/ChatRenderContext';
@@ -204,14 +203,6 @@ function CanvasEmbedContent({ workspaceId, canvasId, disclosureState }: CanvasEm
                             compact
                             connectionInHeader
                             connectionSlot={connectionSlotEl}
-                        />
-                    </div>
-                ) : canvas.type === 'extension' ? (
-                    <div className="h-[400px] overflow-hidden" data-testid="canvas-embed-extension">
-                        <ExtensionCanvasView
-                            workspaceId={workspaceId}
-                            canvas={canvas}
-                            onCanvasSaved={setCanvas}
                         />
                     </div>
                 ) : (

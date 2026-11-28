@@ -11,7 +11,7 @@
  *   src/server/spa/client/dist/ts.worker.js      (Monaco TypeScript worker)
  *   src/server/spa/client/dist/canvas-vendor/*   (extension-canvas library globals)
  */
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'fs/promises';
 import { dirname } from 'path';
 import autoprefixer from 'autoprefixer';
 import * as esbuild from 'esbuild';
@@ -126,21 +126,7 @@ await buildTailwindBundle(
 );
 
 // ---------------------------------------------------------------------------
-// Extension-canvas vendored libraries (dist/canvas-vendor/)
-//
-// Served at the SITE ROOT alongside the Monaco/pdf.js workers, and pulled into
-// the extension iframe with classic `<script src>` / `<link rel=stylesheet>`
-// tags. The iframe is `sandbox="allow-scripts"` with no `allow-same-origin`, so
-// it is an opaque origin sending `Origin: null`; CoC's CORS policy reflects only
-// loopback origins and never emits `*`, so CORS-mode subresources (module
-// scripts, import maps, `fetch`) get no `Access-Control-Allow-Origin` and are
-// blocked. Classic scripts and stylesheets are no-CORS subresource requests and
-// are unaffected — hence IIFE globals rather than ESM.
-//
-// The registry these outputs must stay in step with lives in
-// `src/server/canvas/canvas-libraries.ts` (ids, globals, filenames, ordering).
-// ---------------------------------------------------------------------------
-
+// Recharts loads lazily in Kusto and uses the SPA React globals.
 const CANVAS_VENDOR_DIR = 'src/server/spa/client/dist/canvas-vendor';
 
 /**
@@ -186,12 +172,10 @@ const CANVAS_VENDOR_EXTERNALS = {
 };
 
 const CANVAS_VENDOR_BUNDLES = [
-    // react.js bundles React itself, so it must NOT externalize react.
-    { entry: 'scripts/canvas-vendor/react.entry.js', out: 'react.js', externals: null },
     { entry: 'scripts/canvas-vendor/recharts.entry.js', out: 'recharts.js', externals: CANVAS_VENDOR_EXTERNALS },
-    { entry: 'scripts/canvas-vendor/papaparse.entry.js', out: 'papaparse.js', externals: null },
 ];
 
+await rm(CANVAS_VENDOR_DIR, { recursive: true, force: true });
 await mkdir(CANVAS_VENDOR_DIR, { recursive: true });
 
 await Promise.all(CANVAS_VENDOR_BUNDLES.map(bundle =>
@@ -212,25 +196,7 @@ await Promise.all(CANVAS_VENDOR_BUNDLES.map(bundle =>
     })
 ));
 
-// Static utility CSS for artifacts. NOT the Tailwind Play CDN — that is a
-// runtime JIT compiler fetched from a CDN, which breaks air-gapped installs and
-// the offline export. The covered utility subset comes from an explicit safelist
-// (there is no source tree to scan: artifact markup is authored at runtime).
-{
-    const inputPath = 'scripts/canvas-vendor/tailwind.canvas.css';
-    const outputPath = `${CANVAS_VENDOR_DIR}/tailwind.css`;
-    const source = await readFile(inputPath, 'utf-8');
-    const result = await postcss([
-        tailwindcss({ config: './scripts/canvas-vendor/tailwind.canvas.config.js' }),
-        autoprefixer(),
-    ]).process(source, { from: inputPath, to: outputPath });
-    // Minified — unlike bundle.css this sheet is inlined into every exported
-    // React artifact, so whitespace is real payload.
-    const minified = await esbuild.transform(result.css, { loader: 'css', minify: true });
-    await writeFile(outputPath, minified.code, 'utf-8');
-}
-
-for (const name of [...CANVAS_VENDOR_BUNDLES.map(b => b.out), 'tailwind.css']) {
+for (const name of CANVAS_VENDOR_BUNDLES.map(b => b.out)) {
     const bytes = Buffer.byteLength(await readFile(`${CANVAS_VENDOR_DIR}/${name}`, 'utf-8'), 'utf-8');
     console.log(`  ${CANVAS_VENDOR_DIR}/${name}  ${(bytes / 1024).toFixed(1)}kb`);
 }

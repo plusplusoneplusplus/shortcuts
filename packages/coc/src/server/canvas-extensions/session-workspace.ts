@@ -41,7 +41,10 @@ export async function listSessionWorkspaceOwners(dataDir: string): Promise<Sessi
     const owners: SessionOwner[] = [];
     for (const workspaceId of await directories(path.resolve(dataDir, 'repos'))) {
         if (!validWorkspaceId(workspaceId)) { continue; }
-        for (const name of await directories(stateRoot(dataDir, workspaceId))) {
+        const state = stateRoot(dataDir, workspaceId);
+        const generated = path.join(path.dirname(state), 'generated');
+        const names = new Set([...await directories(state), ...await directories(generated)]);
+        for (const name of names) {
             if (!/^p-(?:[0-9a-f]{2})+$/.test(name)) { continue; }
             const processId = Buffer.from(name.slice(2), 'hex').toString('utf8');
             if (`p-${Buffer.from(processId, 'utf8').toString('hex')}` === name) {

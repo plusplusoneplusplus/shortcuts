@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { runScriptWithOwnerTools } from '../../../src/server/executors/owner-script-runner';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { CONFIG_FILE_NAME } from '../../../src/config';
-import { isCanvasScriptTool, validateCanvasManifestTools } from '../../../src/server/canvas/canvas-script-bridge';
+import { isExtensionScriptTool, validateExtensionScriptTools } from '../../../src/server/canvas-extensions/script-tools';
 import { summarizeToolParameters } from '../../../src/server/llm-tools/llm-tool-parameters';
 import { LLM_TOOL_PARAMETER_SCHEMAS } from '../../../src/server/llm-tools/llm-tool-parameter-schemas';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -311,9 +311,9 @@ describe('kusto_query tool', () => {
             expect(await executionTool(clientFactory).handler!({ ...args, query: '  .show tables' }))
                 .toMatchObject({ success: false, error: expect.stringMatching(/management commands require explicit approval/) });
             expect(clientFactory).not.toHaveBeenCalled();
-            expect(isCanvasScriptTool('execute_kusto_query')).toBe(true);
-            expect(isCanvasScriptTool('kusto_query')).toBe(false);
-            expect(validateCanvasManifestTools(['execute_kusto_query'])).toEqual({ ok: true, tools: ['execute_kusto_query'] });
+            expect(isExtensionScriptTool('execute_kusto_query')).toBe(true);
+            expect(isExtensionScriptTool('kusto_query')).toBe(false);
+            expect(validateExtensionScriptTools(['execute_kusto_query'])).toEqual({ ok: true, tools: ['execute_kusto_query'] });
         });
 
         it('rechecks live disablement before real or mock execution', async () => {
@@ -342,7 +342,7 @@ describe('kusto_query tool', () => {
                 approvalRequiredLlmTools: mode === 'approval-required' ? ['execute_kusto_query'] : [],
             });
             fs.writeFileSync(path.join(dataDir, CONFIG_FILE_NAME),
-                'features:\n  canvasHostApis: false\n  toolScripting: false\n  canvasToolScripts: false\n');
+                'features:\n  toolScripting: false\n');
             const clientFactory = vi.fn(mockFactory([[1], [2]]));
             const emitProcessEvent = vi.fn();
             const result = await runScriptWithOwnerTools({

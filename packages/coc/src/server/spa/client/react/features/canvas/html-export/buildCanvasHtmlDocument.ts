@@ -49,7 +49,6 @@ function sourceScriptType(type: CanvasHtmlExportType): string {
         case 'markdown':
             return 'text/markdown';
         case 'excalidraw':
-        case 'extension':
             return 'application/json';
         case 'code':
         default:
@@ -153,12 +152,6 @@ export function buildCanvasHtmlDocument(
     let body: string;
     if (type === 'code') {
         body = renderCodeBody(sourceText, language, warnings);
-    } else if (type === 'extension') {
-        // The extension body is a fully-built, self-contained sandboxed iframe
-        // (Layer D-ext). Its `<img>` tags live inside the escaped `srcdoc`
-        // attribute, so running `rewriteImages` over it would corrupt the
-        // markup — ship the body verbatim instead.
-        body = input.bodyHtml ?? '';
     } else {
         body = rewriteImages(input.bodyHtml ?? '', assets, warnings);
     }

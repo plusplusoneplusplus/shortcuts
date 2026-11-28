@@ -13,7 +13,6 @@ import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forg
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { buildMemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
-import { createCanvasRunScriptFactory } from '../../../src/server/canvas/canvas-script-bridge';
 import { CONFIG_FILE_NAME } from '../../../src/config';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -166,17 +165,6 @@ describe('owner scripts reach the owner workspace MCP servers', () => {
         const run = await runOwner(PID_SCRIPT, 'ws-c', 'chat-c');
         expect(run.ok).toBe(true);
         await waitForExit(run.result as number);
-    });
-
-    it('serves canvas host.runScript as the owner chat, even with no manifest tools', async () => {
-        const runScript = createCanvasRunScriptFactory({
-            getFeatures: () => ({ canvasHostApis: true, toolScripting: true, canvasToolScripts: true }),
-            getOwnerScriptRunner: () => router.runOwnerScript,
-            log: () => {},
-        })({ workspaceId: 'ws-a', canvasId: 'canvas-1', capability: 'refresh', processId: 'chat-a', tools: [] });
-        const outcome = await runScript({ code: PID_SCRIPT }, new AbortController().signal);
-        expect(outcome.ok).toBe(true);
-        await waitForExit((outcome as { result: number }).result);
     });
 
     it('runs Sentinel refrain gates with the owner servers and closes them after the gate', async () => {

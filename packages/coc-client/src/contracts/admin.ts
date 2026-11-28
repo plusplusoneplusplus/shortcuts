@@ -422,6 +422,7 @@ export interface AdminImportPreviewResponse {
 }
 
 export interface AdminImportResponse {
+  droppedCanvasRecords?: number;
   importedProcesses: number;
   importedWorkspaces: number;
   importedQueueFiles: number;

@@ -10,8 +10,6 @@ const mocks = vi.hoisted(() => ({
     save: vi.fn(),
     list: vi.fn(),
     create: vi.fn(),
-    getExtension: vi.fn(),
-    getExtensionRemote: vi.fn(),
     listVersions: vi.fn(),
     getVersion: vi.fn(),
     listComments: vi.fn(),
@@ -37,7 +35,6 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => {
         save: mocks.save,
         list: mocks.list,
         create: mocks.create,
-        getExtension: mocks.getExtension,
         listVersions: mocks.listVersions,
         getVersion: mocks.getVersion,
         listComments: mocks.listComments,
@@ -49,10 +46,9 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => {
     return {
         getSpaCocClient: () => ({ canvases: localCanvases, notes }),
         // A REMOTE clone (registered via the cloneRegistry) routes here. It shares
-        // the load surface but has a DISTINCT getExtension so a clone-routed export
         // test can prove the workspace-owning server — not the local client —
         // served the extension document.
-        getCocClientFor: () => ({ canvases: { ...localCanvases, getExtension: mocks.getExtensionRemote }, notes }),
+        getCocClientFor: () => ({ canvases: { ...localCanvases }, notes }),
     };
 });
 
@@ -64,11 +60,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
     ),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView', () => ({
-    ExtensionCanvasView: ({ canvas }: { canvas: { id: string } }) => (
-        <div data-testid="mock-extension-view" data-canvas-id={canvas.id}>extension</div>
-    ),
-}));
 
 // Layer F wires the "Export as HTML" menu item to the Layer E orchestrator.
 // Partial-mock it: keep the real `browserDownload` (which `htmlExportDeps`
@@ -156,8 +147,6 @@ describe('CanvasPanel', () => {
         mockSelectionLayout();
         mocks.get.mockReset();
         mocks.save.mockReset();
-        mocks.getExtension.mockReset();
-        mocks.getExtensionRemote.mockReset();
         mocks.listVersions.mockReset().mockResolvedValue([]);
         mocks.getVersion.mockReset();
         mocks.listComments.mockReset().mockResolvedValue([]);
@@ -1232,17 +1221,6 @@ describe('CanvasPanel', () => {
         expect(onFullscreenChange).toHaveBeenLastCalledWith(false);
     });
 
-    it('renders extension canvases through the sandboxed iframe view with an extension badge', async () => {
-        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
-
-        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-extension-badge')).toBeTruthy());
-        expect(screen.getByTestId('mock-extension-view')).toBeTruthy();
-        // Extension canvases do not show the markdown preview pane
-        expect(screen.queryByTestId('canvas-panel-preview')).toBeNull();
-    });
-
     it('renders excalidraw canvases through the view-only Excalidraw viewer with a diagram badge', async () => {
         const scene = JSON.stringify({
             type: 'excalidraw',
@@ -1349,111 +1327,6 @@ describe('CanvasPanel', () => {
         await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
         fireEvent.click(screen.getByTestId('canvas-panel-export'));
         expect(screen.getByTestId('canvas-panel-export-html')).toBeTruthy();
-    });
-
-    it('offers an enabled Export as HTML action for extension canvases (no "soon" disabled item)', async () => {
-        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
-
-        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-panel-export'));
-
-        // The stale disabled "coming soon" item is gone; the real action is enabled.
-        expect(screen.queryByTestId('canvas-panel-export-html-disabled')).toBeNull();
-        const item = screen.getByTestId('canvas-panel-export-html');
-        expect(item.hasAttribute('disabled')).toBe(false);
-        expect(item.getAttribute('title')).toContain('view-only');
-    });
-
-    it('exports an extension canvas as HTML: fetches the UI doc (clone-routed) and passes { uiHtml, revision } + state to the orchestrator', async () => {
-        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', revision: 4, content: '{"cards":[1,2]}' }));
-        mocks.getExtension.mockResolvedValue({
-            manifest: { description: 'demo', capabilities: [] },
-            uiHtml: '<div id="app">hi</div>',
-            capabilitiesJs: 'capabilities = {}',
-        });
-        mocks.exportCanvasAsHtml.mockResolvedValue({ ok: true, html: '<!doctype html>', filename: 'my-plan.html', warnings: [] });
-
-        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-panel-export'));
-        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
-
-        // The extension UI document is retrieved via the workspace-routed client.
-        await waitFor(() => expect(mocks.getExtension).toHaveBeenCalledWith('ws-1', 'doc-abc123'));
-
-        await waitFor(() => expect(mocks.exportCanvasAsHtml).toHaveBeenCalledTimes(1));
-        const [exportable] = mocks.exportCanvasAsHtml.mock.calls[0];
-        expect(exportable).toMatchObject({
-            title: 'My Plan',
-            type: 'extension',
-            content: '{"cards":[1,2]}',
-            workspaceId: 'ws-1',
-            // uiHtml comes from the fetched doc; the frozen revision rides along.
-            // capabilitiesJs is deliberately NOT forwarded — capability code must
-            // never ship in a view-only snapshot.
-            extension: { uiHtml: '<div id="app">hi</div>', revision: 4 },
-        });
-        expect(exportable.extension).not.toHaveProperty('capabilitiesJs');
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Exported HTML'));
-    });
-
-    it('routes the extension export through the workspace-owning (remote) client for a remote workspace', async () => {
-        // A registered remote workspace resolves useCocClient() to the remote-routed
-        // client — the same clone-aware path the panel uses for get/save.
-        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://remote.example' }]);
-        mocks.get.mockResolvedValue(makeCanvas({ workspaceId: 'ws-remote', type: 'extension', revision: 7, content: '{"cards":[]}' }));
-        mocks.getExtensionRemote.mockResolvedValue({
-            manifest: { description: 'demo', capabilities: [] },
-            uiHtml: '<div>remote ui</div>',
-            capabilitiesJs: 'capabilities = {}',
-        });
-        mocks.exportCanvasAsHtml.mockResolvedValue({ ok: true, html: '<!doctype html>', filename: 'my-plan.html', warnings: [] });
-
-        render(<CanvasPanel workspaceId="ws-remote" canvasId="doc-abc123" liveEvent={null} />);
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-panel-export'));
-        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
-
-        // The extension document is served by the remote client; the local one is never touched.
-        await waitFor(() => expect(mocks.getExtensionRemote).toHaveBeenCalledWith('ws-remote', 'doc-abc123'));
-        expect(mocks.getExtension).not.toHaveBeenCalled();
-
-        await waitFor(() => expect(mocks.exportCanvasAsHtml).toHaveBeenCalledTimes(1));
-        const [exportable] = mocks.exportCanvasAsHtml.mock.calls[0];
-        expect(exportable).toMatchObject({
-            type: 'extension',
-            workspaceId: 'ws-remote',
-            extension: { uiHtml: '<div>remote ui</div>', revision: 7 },
-        });
-    });
-
-    it('surfaces a toast and skips the export when the extension UI document cannot be fetched', async () => {
-        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
-        mocks.getExtension.mockRejectedValue(new Error('extension gone'));
-        const addToast = vi.fn();
-        const toastValue: ToastContextValue = { addToast, removeToast: vi.fn(), toasts: [] };
-
-        render(
-            <ToastContext.Provider value={toastValue}>
-                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />
-            </ToastContext.Provider>,
-        );
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-panel-export'));
-        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
-
-        await waitFor(() => expect(addToast).toHaveBeenCalledWith('Could not load the extension to export as HTML', 'error'));
-        // No broken/partial export: the orchestrator is never reached.
-        expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
-        // Panel stays mounted and reports the failure.
-        expect(screen.getByTestId('canvas-panel')).toBeTruthy();
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Export failed'));
     });
 
     it('surfaces a toast and keeps the panel mounted when the HTML export fails', async () => {

@@ -39,6 +39,7 @@ export class DataWiper {
     constructor(
         private readonly dataDir: string,
         private readonly store: ProcessStore,
+        private readonly beforeWipe?: () => Promise<void | (() => void)>,
     ) {}
 
     /**
@@ -65,10 +66,13 @@ export class DataWiper {
         applyStorageWipePlanSummary(result, plan);
 
         if (!dryRun) {
-            await executeStorageWipePlan({
-                dataDir: this.dataDir,
-                store: this.store,
-            }, plan, result);
+            const release = await this.beforeWipe?.();
+            try {
+                await executeStorageWipePlan({
+                    dataDir: this.dataDir,
+                    store: this.store,
+                }, plan, result);
+            } finally { if (typeof release === 'function') release(); }
         }
 
         return result;

@@ -21,7 +21,7 @@ import { CanvasLayout, DESCRIPTOR_FILE, ARTIFACT_FILE } from './canvas-layout';
 import { StagedCommit, cleanupStaleTemps, isCanvasTempName } from './canvas-atomic-write';
 import { reportCanvasCorruption, isAbsentError } from './canvas-diagnostics';
 import {
-    isValidCanvasId,
+    isValidCanvasId, CANVAS_TYPES,
     MAX_CANVAS_VERSIONS,
     type CanvasDescriptor,
     type CanvasRecord,
@@ -39,7 +39,9 @@ export class CanvasRecordRepository {
         if (!isValidCanvasId(canvasId)) return null;
         try {
             const raw = fs.readFileSync(this.layout.descriptorPath(workspaceId, canvasId), 'utf-8');
-            return JSON.parse(raw) as CanvasDescriptor;
+            const descriptor = JSON.parse(raw) as CanvasDescriptor;
+            if (!CANVAS_TYPES.includes(descriptor.type)) throw new Error('Unsupported canvas descriptor type');
+            return descriptor;
         } catch (error) {
             reportCanvasCorruption({ workspaceId, canvasId, role: 'descriptor', file: DESCRIPTOR_FILE, error });
             return null;
@@ -89,8 +91,7 @@ export class CanvasRecordRepository {
 
     /**
      * Prepare a revision without publishing it. The caller commits — that is
-     * how an extension save gets its documents and its revision into place
-     * through one staging phase and one rename phase.
+     * callers coordinate a revision through one staging phase and one rename phase.
      */
     stageCommit(record: CanvasRecord): StagedCommit {
         const { content, ...descriptor } = record;
