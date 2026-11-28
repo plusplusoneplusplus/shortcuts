@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -43,6 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     resetCloneRegistryForTests();
     delete (window as { cocDesktop?: unknown }).cocDesktop;
 });
@@ -67,6 +68,69 @@ describe('Copilot extension guest', () => {
         expect(bridge.close).toHaveBeenCalledWith(bridge.open.mock.calls[0][0]);
         expect(unsubscribe).toHaveBeenCalledOnce();
         expect(guest.isConnected).toBe(false);
+    });
+
+    it('confirms reload, replaces the visible guest and keeps the saved identity', async () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const view = mount();
+        expect(screen.getByRole('button', { name: 'Reload' }).hasAttribute('disabled')).toBe(true);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const firstGuest = view.container.querySelector('webview')!;
+        const firstId = bridge.open.mock.calls[0][0];
+        act(() => stateListener({ viewId: firstId, status: 'loaded' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        expect(confirm).toHaveBeenCalledWith(expect.stringContaining('shared runtime in this conversation'));
+        expect(bridge.open).toHaveBeenCalledTimes(1);
+        expect(firstGuest.isConnected).toBe(true);
+        confirm.mockReturnValue(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(bridge.open).toHaveBeenCalledTimes(2));
+        const secondId = bridge.open.mock.calls[1][0];
+        expect(secondId).not.toBe(firstId);
+        expect(bridge.open).toHaveBeenLastCalledWith(secondId, 'ws-local', 'saved-canvas', true);
+        expect(bridge.close).toHaveBeenCalledWith(firstId);
+        expect(firstGuest.isConnected).toBe(false);
+        await waitFor(() => expect(view.container.querySelectorAll('webview')).toHaveLength(1));
+        expect(view.container.querySelector('webview')).not.toBe(firstGuest);
+        expect(screen.getByRole('button', { name: 'Reload' }).hasAttribute('disabled')).toBe(true);
+        act(() => stateListener({ viewId: secondId, status: 'loaded' }));
+        expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('reports invalid-code reload failure and permits explicit recovery without stale guest replies', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const view = mount();
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const firstId = bridge.open.mock.calls[0][0];
+        act(() => stateListener({ viewId: firstId, status: 'loaded' }));
+        const oldListener = stateListener;
+        bridge.open.mockResolvedValueOnce({ ok: false, message: 'Unexpected token in extension.mjs' });
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Unexpected token'));
+        expect(view.container.querySelector('webview')).toBeNull();
+        act(() => oldListener({ viewId: firstId, status: 'loaded' }));
+        expect(screen.getByRole('alert').textContent).toContain('Unexpected token');
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        expect(bridge.open).toHaveBeenLastCalledWith(expect.any(String), 'ws-local', 'saved-canvas', true);
+    });
+
+    it('discards an ignored reload reply when the canvas owner changes', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const view = mount();
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        act(() => stateListener({ viewId: bridge.open.mock.calls[0][0], status: 'loaded' }));
+        let finish!: (result: typeof ready) => void;
+        bridge.open.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        const reloadId = bridge.open.mock.calls[1][0];
+        view.rerender(<CopilotExtensionCanvasView workspaceId="other-workspace" canvasId="other-canvas" allowDesktopGuest />);
+        await waitFor(() => expect(view.container.querySelector('webview')).not.toBeNull());
+        const guest = view.container.querySelector('webview');
+        await act(async () => finish({ ...ready, src: 'http://127.0.0.1:3211/' }));
+        expect(bridge.close).toHaveBeenCalledWith(reloadId);
+        expect(view.container.querySelector('webview')).toBe(guest);
+        expect(bridge.open).toHaveBeenLastCalledWith(expect.any(String), 'other-workspace', 'other-canvas');
     });
 
     it('shows the browser fallback without a desktop bridge', () => {

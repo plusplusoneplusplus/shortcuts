@@ -79,6 +79,21 @@ describe('extension canvas IPC', () => {
         expect(owner.sender.send).toHaveBeenCalledWith(h.ipc.EXTENSION_CANVAS_STATE_CHANNEL, { viewId: 'view', status: 'loaded' });
     });
 
+    it('reloads only the saved identity on explicit reload and validates the flag before I/O', async () => {
+        const h = await harness();
+        const owner = event();
+        for (const reload of ['true', 1, null, {}]) {
+            expect(await h.open(owner, 'view', 'workspace', 'canvas-1', reload)).toMatchObject({ ok: false });
+        }
+        expect(mocks.fetch).not.toHaveBeenCalled();
+        expect(await h.open(owner, 'view', 'workspace', 'canvas-1', true)).toMatchObject({ ok: true });
+        expect(String(mocks.fetch.mock.calls[0][0])).toBe('http://127.0.0.1:4000/api/workspaces/workspace/canvases/canvas-1/copilot-extension/reload');
+        expect(mocks.fetch.mock.calls[0][1]).toMatchObject({ method: 'POST', redirect: 'error' });
+        expect(mocks.fetch.mock.calls[0][1]).not.toHaveProperty('body');
+        expect(await h.open(owner, 'view', 'workspace', 'canvas-1', false)).toMatchObject({ ok: true });
+        expect(String(mocks.fetch.mock.calls[1][0])).toContain('/copilot-extension/open');
+    });
+
     it('rejects foreign frames, unknown embedders, remote servers and malformed identities before I/O', async () => {
         const h = await harness();
         const owner = event();

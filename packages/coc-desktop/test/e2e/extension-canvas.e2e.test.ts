@@ -17,6 +17,7 @@ describe.skipIf(skip)('extension canvas guest (real Electron)', () => {
         }],
         ['extension-canvas-bridge-runner.cjs', {
             sdk: true, preload: true, savedReopen: true, agentActionSse: true, external: true, restoredAfterRestart: true,
+            importedCodeReload: true, freshGuest: true, invalidCodeRecovery: true, consoleErrors: 0,
         }],
     ])('runs %s', async (runner, expected) => {
         const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {

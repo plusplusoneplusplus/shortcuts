@@ -20,6 +20,13 @@ const { installBrowserWebviewGuard, registerBrowserEmbedder } = require(path.joi
 
 installBrowserWebviewGuard();
 const external = [];
+const consoleErrors = [];
+app.on('web-contents-created', (_event, contents) => {
+    contents.on('console-message', event => {
+        if (event.level === 'error') consoleErrors.push(event.message);
+    });
+    contents.on('preload-error', (_event, _path, error) => consoleErrors.push(error.message));
+});
 shell.openExternal = async url => { external.push(url); };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check) {
@@ -37,8 +44,15 @@ app.whenReady().then(async () => {
         const repo = path.join(root, 'repo');
         const folder = path.join(repo, '.github', 'extensions', 'interactive');
         await fs.mkdir(folder, { recursive: true });
-        await fs.copyFile(path.join(__dirname, '..', '..', '..', 'coc', 'test', 'fixtures', 'canvas-extensions', 'interactive', 'extension.mjs'),
-            path.join(folder, 'extension.mjs'));
+        const source = await fs.readFile(path.join(__dirname, '..', '..', '..', 'coc', 'test', 'fixtures', 'canvas-extensions', 'interactive', 'extension.mjs'), 'utf8');
+        const entryPath = path.join(folder, 'extension.mjs');
+        const helperPath = path.join(folder, 'page.mjs');
+        await fs.writeFile(entryPath, "import { version } from './page.mjs';\n" + source.replace(
+            "response.end('<!doctype html>",
+            "response.end('<p id=\"version\">' + version + '</p><!doctype html>",
+        ));
+        await fs.writeFile(helperPath, "export const version = 'first';\n");
+        const entrySource = await fs.readFile(entryPath, 'utf8');
         const config = () => ({ canvasExtensions: { enabled: true } });
         store = new SqliteProcessStore({ dbPath: path.join(root, 'processes.db') });
         const scope = { workspaceId: 'workspace', processId: 'conversation' };
@@ -83,9 +97,9 @@ app.whenReady().then(async () => {
         });
         registerBrowserEmbedder(main, url);
         await main.loadURL(url);
-        async function mount(viewId) {
+        async function mount(viewId, reload = false) {
             const result = await main.webContents.executeJavaScript(`window.cocDesktop.extensionCanvas.open(
-                ${JSON.stringify(viewId)}, 'workspace', ${JSON.stringify(opened.canvasId)})`);
+                ${JSON.stringify(viewId)}, 'workspace', ${JSON.stringify(opened.canvasId)}, ${reload})`);
             assert.equal(result.ok, true, result.message);
             const id = await main.webContents.executeJavaScript(`new Promise((resolve, reject) => {
                 const guest = document.createElement('webview');
@@ -101,6 +115,11 @@ app.whenReady().then(async () => {
             const guest = webContents.fromId(id);
             await until(async () => await guest.executeJavaScript('document.getElementById("count").textContent') === '5');
             return guest;
+        }
+        async function close(viewId, guest) {
+            await main.webContents.executeJavaScript(`window.cocDesktop.extensionCanvas.close(${JSON.stringify(viewId)});
+                document.getElementById(${JSON.stringify(viewId)}).remove()`);
+            await until(() => guest.isDestroyed());
         }
         let guest = await mount('first-view');
         const result = await tool('invoke_canvas_action', { instanceId: opened.instanceId, actionName: 'increment' });
@@ -119,8 +138,35 @@ app.whenReady().then(async () => {
         assert.notEqual(guest.getURL(), opened.url);
         assert.equal(canvasStore.listCanvases(scope.workspaceId).length, 1);
         assert.equal(JSON.parse(canvasStore.getCanvas(scope.workspaceId, opened.canvasId).content).instanceId, opened.instanceId);
+        assert.equal(await guest.executeJavaScript('document.getElementById("version").textContent'), 'first');
+        await fs.writeFile(helperPath, "export const version = 'second';\n");
+        assert.equal(await fs.readFile(entryPath, 'utf8'), entrySource);
+        assert.equal(await guest.executeJavaScript('document.getElementById("version").textContent'), 'first');
+        await close('restored-view', guest);
+        guest = await mount('unchanged-runtime');
+        assert.equal(await guest.executeJavaScript('document.getElementById("version").textContent'), 'first');
+        const staleGuestId = guest.id;
+        await close('unchanged-runtime', guest);
+        guest = await mount('reloaded-view', true);
+        assert.notEqual(guest.id, staleGuestId);
+        assert.equal(await guest.executeJavaScript('document.getElementById("version").textContent'), 'second');
+        await close('reloaded-view', guest);
+        await fs.writeFile(helperPath, 'export const version = ;\n');
+        const failed = await main.webContents.executeJavaScript(`window.cocDesktop.extensionCanvas.open(
+            'invalid-code', 'workspace', ${JSON.stringify(opened.canvasId)}, true)`);
+        assert.equal(failed.ok, false);
+        assert.ok(failed.message, 'Runtime failure must reach the renderer');
+        await fs.writeFile(helperPath, "export const version = 'recovered';\n");
+        guest = await mount('recovered-view', true);
+        assert.equal(await guest.executeJavaScript('document.getElementById("version").textContent'), 'recovered');
+        assert.equal(canvasStore.listCanvases(scope.workspaceId).length, 1);
+        const saved = JSON.parse(canvasStore.getCanvas(scope.workspaceId, opened.canvasId).content);
+        assert.equal(saved.instanceId, opened.instanceId);
+        assert.deepEqual(saved.input, { count: 5 });
+        assert.deepEqual(consoleErrors, [], `Renderer console/page errors: ${consoleErrors.join('\n')}`);
         console.log('E2E::' + JSON.stringify({
             sdk: true, preload: true, savedReopen: true, agentActionSse: true, external: true, restoredAfterRestart: true,
+            importedCodeReload: true, freshGuest: true, invalidCodeRecovery: true, consoleErrors: 0,
         }));
     } finally {
         disposeExtensionCanvasIpc();

@@ -4,7 +4,7 @@ import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 
 export interface ExtensionCanvasBridge {
-    open(viewId: string, workspaceId: string, canvasId: string): Promise<
+    open(viewId: string, workspaceId: string, canvasId: string, reload?: boolean): Promise<
         { ok: true; embed: 'webview'; src: string; partition: string; title?: string }
         | { ok: false; message: string }
     >;
@@ -34,10 +34,14 @@ export function CopilotExtensionCanvasView({
     const hostRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
     const [error, setError] = useState<string>();
+    const [reloadNonce, setReloadNonce] = useState(0);
+    const reloadRequested = useRef(false);
 
     useEffect(() => {
         if (!enabled || !bridge) return;
         const viewId = `extension-canvas-${crypto.randomUUID()}`;
+        const reload = reloadRequested.current;
+        reloadRequested.current = false;
         let disposed = false;
         let failed = false;
         let guest: (HTMLElement & { getWebContentsId(): number }) | undefined;
@@ -56,7 +60,9 @@ export function CopilotExtensionCanvasView({
             if (state.status === 'failed') fail(state.error || 'Failed to load extension canvas');
             else setStatus(state.status);
         });
-        void bridge.open(viewId, workspaceId, canvasId).then(result => {
+        const opening = reload ? bridge.open(viewId, workspaceId, canvasId, true)
+            : bridge.open(viewId, workspaceId, canvasId);
+        void opening.then(result => {
             if (disposed || failed) {
                 bridge.close(viewId);
                 return;
@@ -86,19 +92,31 @@ export function CopilotExtensionCanvasView({
             guest?.remove();
             bridge.close(viewId);
         };
-    }, [enabled, bridge, workspaceId, canvasId, routingRef]);
+    }, [enabled, bridge, workspaceId, canvasId, routingRef, reloadNonce]);
 
     if (!enabled) {
         return <div className="p-6 text-center text-xs text-[#848484]">Open in the CoC desktop app</div>;
     }
     return (
-        <div className="relative h-full min-h-[200px]" data-testid="copilot-extension-canvas">
-            {status !== 'loaded' && (
-                <div role={status === 'failed' ? 'alert' : 'status'} className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#848484]">
-                    {status === 'failed' ? error : 'Loading extension canvas…'}
-                </div>
-            )}
-            <div ref={hostRef} className="h-full" hidden={status === 'failed'} />
+        <div className="flex h-full min-h-[200px] flex-col" data-testid="copilot-extension-canvas">
+            <div className="flex shrink-0 justify-end border-b border-[#848484]/20 px-2 py-1">
+                <button type="button" disabled={status === 'loading'}
+                    className="rounded px-2 py-1 text-xs text-[#848484] hover:bg-[#848484]/10 disabled:opacity-50"
+                    onClick={() => {
+                        if (status === 'loading' || !window.confirm('Reload this extension? This restarts its shared runtime in this conversation. Unsaved page input may be lost. Saved instance input and session files are kept. Other open canvases from this extension may need to be reopened. Running actions finish before reload. Actions are not replayed.')) return;
+                        reloadRequested.current = true;
+                        setStatus('loading');
+                        setReloadNonce(value => value + 1);
+                    }}>Reload</button>
+            </div>
+            <div className="relative min-h-0 flex-1">
+                {status !== 'loaded' && (
+                    <div role={status === 'failed' ? 'alert' : 'status'} className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#848484]">
+                        {status === 'failed' ? error : 'Loading extension canvas…'}
+                    </div>
+                )}
+                <div ref={hostRef} className="h-full" hidden={status === 'failed'} />
+            </div>
         </div>
     );
 }

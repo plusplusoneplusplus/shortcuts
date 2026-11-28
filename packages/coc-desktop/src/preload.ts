@@ -580,9 +580,9 @@ const api = {
         }),
     },
     extensionCanvas: {
-        open: (viewId: string, workspaceId: string, canvasId: string): Promise<
+        open: (viewId: string, workspaceId: string, canvasId: string, reload?: boolean): Promise<
             { ok: true; embed: 'webview'; src: string; partition: string; title?: string } | { ok: false; message: string }
-        > => ipcRenderer.invoke(EXTENSION_CANVAS_OPEN_CHANNEL, viewId, workspaceId, canvasId),
+        > => ipcRenderer.invoke(EXTENSION_CANVAS_OPEN_CHANNEL, viewId, workspaceId, canvasId, reload),
         adopt: (viewId: string, guestId: number): Promise<void> =>
             ipcRenderer.invoke(EXTENSION_CANVAS_ADOPT_CHANNEL, viewId, guestId),
         close: (viewId: string) => ipcRenderer.send(EXTENSION_CANVAS_CLOSE_CHANNEL, viewId),

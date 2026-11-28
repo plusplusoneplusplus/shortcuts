@@ -150,8 +150,9 @@ filesystem errors propagate.
 This repository ships `.github/extensions/coc-log-tail`, a single-file extension that
 tails `<dataDir>/logs/coc-service.ndjson` and `coc-desktop.log` (it finds `dataDir`
 from `COPILOT_HOME`, not the cwd), serves a filterable SSE log view, and sends a
-chosen line with nearby lines through `session.send`. Keep such extensions single-file:
-the content hash covers only `extension.mjs` and `package.json`.
+chosen line with nearby lines through `session.send`. The discovery content hash
+covers only `extension.mjs` and `package.json`;
+local imports require the explicit desktop Reload action to refresh running code.
 `test/server/canvas-extensions/coc-log-tail.test.ts` runs it through the real host.
 `.github/extensions/coc-chat-viewer` shows a transcript by process ID through the
 tool-script bridge calling `get_conversation` (marked `readOnly` for this);
@@ -233,6 +234,12 @@ Discovery supplies the current hash on each tool call; a changed path/hash refre
 an existing runtime and reopens known instances before dispatch. Idle expiry preserves
 declarations; disable/shutdown clear them. Opens and actions retain separate
 conversation processes even when their declarations come from the shared cache.
+Hash refresh does not replace mounted guests. Desktop Reload explicitly retires only
+that workspace/conversation/extension runtime and invalidates its declarations,
+regardless of hash. Retirement cancels scripts and revokes queued/late runtime work;
+the next open hydrates saved instances and reads all code in a fresh process.
+Other conversations and workspaces keep their runtimes. Other views of the same
+runtime can need reopening because their URLs belong to the retired child.
 
 Server composition supplies shared runtime, CanvasStore hydration and update notifier
 services through `getCanvasExtensionRuntime`. Standard chat, follow-up, Ralph and
@@ -268,7 +275,14 @@ and `canvases.openCopilotExtensionByKey`.
 derives the conversation and extension identity/input from the saved record, revalidates
 the live owner/gate, re-sends `canvas.open` and returns an uncached runtime URL plus
 extension key. Closed records reopen with their original input. Request bodies cannot
-override ownership or input. The route and tools share the server-owned host registry.
+override ownership or input. The matching `POST .../copilot-extension/reload` route
+forces runtime retirement before reopening the same saved record. Both operations
+share the owner queue with tools and wait for running owner operations to finish.
+Disconnects revoke queued requests and prevent
+late persistence without disposing a runtime shared with another view. Reload
+preserves saved input and the session workspace, while runtime memory and unsaved
+page input can be lost. Failures return structured errors without saving a new
+record; retrying Reload after code repair starts a fresh child.
 Failures use SDK `resultType: 'failure'` envelopes whose
 `textResultForLlm` contains `{ success: false, error: { code, message } }` JSON,
 preserving CanvasError details and MCP `isError` across providers. Failed initial persistence closes the newly opened runtime instance.
@@ -281,7 +295,11 @@ External HTTP(S) links use the system browser; permissions, downloads and popup 
 are denied. Owner reload/destruction, attachment expiry and host disposal revoke guests.
 `extension-canvas-ipc.ts` owns one host for the desktop lifetime. Its preload
 `extensionCanvas` bridge accepts saved workspace/canvas IDs, not runtime URLs.
-Main reopens through the existing POST on the desktop's fixed local server and
+Its optional boolean reload argument selects the reload POST. The installed guest
+shows a Reload control with confirmation of the shared runtime and input loss;
+loading disables it, errors keep it available for recovery. Each attempt replaces
+the guest with a fresh view identity and discards late old-view replies.
+Main reopens through the POST on the desktop's fixed local server and
 derives the URL/key from that response. IPC requires the registered SPA main
 frame on that server; close, reload, crash and shutdown abort pending opens.
 Late and superseded responses cannot create or retire another view's guest.
