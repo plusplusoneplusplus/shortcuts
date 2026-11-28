@@ -145,7 +145,9 @@ export function Router() {
         const handler = (e: KeyboardEvent) => {
             if (referenceHash !== null) return;
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
-            if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            // Literal Ctrl on every platform; match the character, not a layout-specific key position.
+            if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (e.key === '[' || e.key === ']')) {
+                if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
                 const element = e.target instanceof Element ? e.target : null;
                 if (element?.closest('.monaco-editor')) return;
                 const inComposer = element?.closest('[contenteditable="true"]')
@@ -154,7 +156,7 @@ export function Router() {
                 const cacheKey = workspaceReadCacheKey(workspaceId, source);
                 const next = moveChatSelection(
                     chatSelectionHistoryRef.current, state.selectedRepoId,
-                    e.key === 'ArrowLeft' ? -1 : 1,
+                    e.key === '[' ? -1 : 1,
                     chatId => {
                         // Optimistic sidebar actions precede the next history snapshot.
                         if (chatArchiveSnapshots && [...chatArchiveSnapshots.values()].some(snapshot =>

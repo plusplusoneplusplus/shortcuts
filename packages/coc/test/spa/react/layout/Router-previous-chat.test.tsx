@@ -78,7 +78,7 @@ function visit(id: string) {
 }
 function press(init: KeyboardEventInit = {}, target: EventTarget = document) {
     const event = new KeyboardEvent('keydown', {
-        key: 'ArrowLeft', ctrlKey: true, altKey: true, bubbles: true, cancelable: true, ...init,
+        key: '[', ctrlKey: true, bubbles: true, cancelable: true, ...init,
     });
     act(() => { target.dispatchEvent(event); });
     // Apply the browser hash event through Router's real route resolver and queue reducer.
@@ -179,7 +179,7 @@ describe('Router chat history shortcuts', () => {
         expect(location.hash).toBe(href('queue_A'));
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_A');
         expect(press().defaultPrevented).toBe(false);
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
+        expect(press({ key: ']' }).defaultPrevented).toBe(true);
         expect(location.hash).toBe(href('queue_B'));
         expect(screen.getByTestId('selected-chat').textContent).toBe('queue_B');
     });
@@ -188,17 +188,17 @@ describe('Router chat history shortcuts', () => {
         setup();
         list([{ id: 'queue_A' }, { id: 'queue_B' }, { id: 'queue_C' }]);
         visit('queue_C');
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        expect(press({ key: ']' }).defaultPrevented).toBe(false);
         for (const id of ['queue_B', 'queue_A']) {
             expect(press().defaultPrevented).toBe(true);
             expect(screen.getByTestId('selected-chat').textContent).toBe(id);
         }
         expect(press().defaultPrevented).toBe(false);
         for (const id of ['queue_B', 'queue_C']) {
-            expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
+            expect(press({ key: ']' }).defaultPrevented).toBe(true);
             expect(screen.getByTestId('selected-chat').textContent).toBe(id);
         }
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        expect(press({ key: ']' }).defaultPrevented).toBe(false);
     });
 
     it('drops forward history when a new chat is selected after going back', () => {
@@ -207,10 +207,10 @@ describe('Router chat history shortcuts', () => {
         visit('queue_C');
         press();
         visit('queue_D');
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        expect(press({ key: ']' }).defaultPrevented).toBe(false);
         press();
         expect(location.hash).toBe(href('queue_B'));
-        press({ key: 'ArrowRight' });
+        press({ key: ']' });
         expect(location.hash).toBe(href('queue_D'));
     });
 
@@ -221,7 +221,7 @@ describe('Router chat history shortcuts', () => {
         list([{ id: 'queue_A' }, ...(reason === 'archived' ? [{ id: 'queue_B', archived: true }] : []), { id: 'queue_C' }]);
         expect(press().defaultPrevented).toBe(true);
         expect(location.hash).toBe(href('queue_A'));
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(true);
+        expect(press({ key: ']' }).defaultPrevented).toBe(true);
         expect(location.hash).toBe(href('queue_C'));
     });
 
@@ -230,7 +230,7 @@ describe('Router chat history shortcuts', () => {
         visit('queue_A');
         press();
         fireEvent.click(screen.getByRole('button', { name: 'Archive A', exact: true }));
-        expect(press({ key: 'ArrowRight' }).defaultPrevented).toBe(false);
+        expect(press({ key: ']' }).defaultPrevented).toBe(false);
         expect(location.hash).toBe(href('queue_B'));
     });
 
@@ -318,11 +318,43 @@ describe('Router chat history shortcuts', () => {
     });
 
     it.each<KeyboardEventInit>([
-        { ctrlKey: false }, { altKey: false }, { metaKey: true }, { shiftKey: true },
+        { ctrlKey: false }, { altKey: true }, { metaKey: true }, { shiftKey: true },
+        { ctrlKey: false, metaKey: true },
+        { key: 'ArrowLeft', altKey: true }, { key: 'ArrowRight', altKey: true },
+        { key: '{', code: 'BracketLeft' }, { key: 'ü', code: 'BracketLeft' },
+        { key: '}', code: 'BracketRight' }, { key: '+', code: 'BracketRight' },
+        { isComposing: true }, { keyCode: 229 },
     ])('ignores other key combinations: %j', init => {
         setup();
         expect(press(init).defaultPrevented).toBe(false);
         expect(location.hash).toBe(href('queue_B'));
+    });
+
+    it('removes both Ctrl+Alt+arrow bindings even when history is available', () => {
+        setup();
+        expect(press({ key: 'ArrowLeft', altKey: true }).defaultPrevented).toBe(false);
+        expect(location.hash).toBe(href('queue_B'));
+        press();
+        expect(location.hash).toBe(href('queue_A'));
+        expect(press({ key: 'ArrowRight', altKey: true }).defaultPrevented).toBe(false);
+        expect(location.hash).toBe(href('queue_A'));
+    });
+
+    it('uses bracket characters even when their physical key codes differ', () => {
+        setup();
+        expect(press({ code: 'Digit8' }).defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_A'));
+        expect(press({ key: ']', code: 'Digit9' }).defaultPrevented).toBe(true);
+        expect(location.hash).toBe(href('queue_B'));
+    });
+
+    it('yields to a key already handled by the composer', () => {
+        setup();
+        const { wrapper, input } = editor(true);
+        input.addEventListener('keydown', event => event.preventDefault());
+        press({}, input);
+        expect(location.hash).toBe(href('queue_B'));
+        wrapper.remove();
     });
 
     it('allows the composer, including nested rich text', () => {
